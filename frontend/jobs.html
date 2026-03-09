@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>JobBoard – Open Positions</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <a href="index.html" class="logo">⚡ JobBoard</a>
+      <a href="hr-login.html" class="btn btn-outline">HR Portal</a>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="hero">
+      <a href="index.html" class="back-link">← Home</a>
+      <h1>Open Positions</h1>
+      <p>We have <strong id="job-count">…</strong> open positions waiting for you.</p>
+    </section>
+
+    <div id="jobs-grid" class="jobs-grid">
+      <div class="skeleton"></div>
+      <div class="skeleton"></div>
+      <div class="skeleton"></div>
+    </div>
+  </main>
+
+  <footer>
+    <p>© 2025 JobBoard MVP — powered by AI screening</p>
+  </footer>
+
+  <script>
+    const API = 'http://localhost:8000';
+
+    async function loadJobs() {
+      try {
+        const res  = await fetch(`${API}/api/jobs`);
+        const jobs = await res.json();
+        document.getElementById('job-count').textContent = jobs.length;
+        const grid = document.getElementById('jobs-grid');
+        grid.innerHTML = jobs.map(job => `
+          <div class="job-card">
+            <div class="job-card-header">
+              <span class="company-badge">${job.company}</span>
+            </div>
+            <h2 class="job-title">${job.title}</h2>
+            <p class="job-snippet">${job.description.slice(0, 120)}…</p>
+            <div class="job-skills">
+              ${job.requirements.split(',').map(s =>
+                `<span class="skill-tag">${s.trim()}</span>`
+              ).join('')}
+            </div>
+            <a href="apply.html?job=${job.id}" class="btn btn-primary">View & Apply</a>
+          </div>
+        `).join('');
+      } catch (e) {
+        document.getElementById('jobs-grid').innerHTML =
+          '<p class="error">Could not load jobs. Make sure the backend is running.</p>';
+      }
+    }
+
+    loadJobs();
+  </script>
+</body>
+</html>

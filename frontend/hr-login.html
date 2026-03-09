@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>HR Login – JobBoard</title>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body class="auth-page">
+  <div class="auth-card">
+    <a href="index.html" class="logo centered">⚡ JobBoard</a>
+    <h1>HR Portal</h1>
+    <p class="subtitle">Sign in to review candidates</p>
+
+    <div id="login-error" class="alert alert-error" style="display:none"></div>
+
+    <div class="form-group">
+      <label>Username</label>
+      <input id="username" type="text" placeholder="hr1" autocomplete="username"/>
+    </div>
+    <div class="form-group">
+      <label>Password</label>
+      <input id="password" type="password" placeholder="••••••••" autocomplete="current-password"
+             onkeydown="if(event.key==='Enter') login()"/>
+    </div>
+
+    <button class="btn btn-primary full" onclick="login()">Sign In</button>
+
+    <p class="hint">MVP credentials: hr1/password1 · hr2/password2 · hr3/password3</p>
+  </div>
+
+  <script>
+    const API = 'http://localhost:8000';
+
+    // Redirect if already logged in
+    if (localStorage.getItem('hr_token')) window.location.href = 'hr-dashboard.html';
+
+    async function login() {
+      const username = document.getElementById('username').value.trim();
+      const password = document.getElementById('password').value;
+      const errEl    = document.getElementById('login-error');
+      errEl.style.display = 'none';
+
+      if (!username || !password) {
+        errEl.textContent = 'Please enter your username and password.';
+        errEl.style.display = 'block';
+        return;
+      }
+
+      try {
+        const res  = await fetch(`${API}/api/hr/login`, {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ username, password }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Login failed');
+
+        localStorage.setItem('hr_token',    data.token);
+        localStorage.setItem('hr_company',  data.company);
+        localStorage.setItem('hr_username', data.username);
+        window.location.href = 'hr-dashboard.html';
+      } catch (e) {
+        errEl.textContent = e.message;
+        errEl.style.display = 'block';
+      }
+    }
+  </script>
+</body>
+</html>

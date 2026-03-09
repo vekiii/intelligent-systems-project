@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Dashboard – HR Portal</title>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <span class="logo">⚡ JobBoard <span id="company-label" class="company-label"></span></span>
+      <button class="btn btn-outline" onclick="logout()">Sign Out</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <div class="dashboard-title">
+      <div>
+        <h1 id="dash-title">Qualified Candidates</h1>
+        <p id="dash-subtitle" class="subtitle">Loading…</p>
+      </div>
+      <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+        <div class="score-legend">
+          <span class="score-dot excellent"></span> 8–10 Excellent
+          <span class="score-dot good"></span> 6–7 Good
+        </div>
+        <label class="toggle-label">
+          <input type="checkbox" id="show-rejected" onchange="toggleRejected()"/>
+          Show rejected
+        </label>
+      </div>
+    </div>
+
+    <div id="alert-box" class="alert alert-error" style="display:none"></div>
+    <div id="candidates-list"><div class="skeleton tall"></div></div>
+
+    <div id="rejected-section" style="display:none">
+      <div class="section-divider">
+        <span>❌ Below threshold (score &lt; 6) — <span id="rejected-count">0</span> candidate(s)</span>
+      </div>
+      <div id="rejected-list"></div>
+    </div>
+  </main>
+
+  <footer><p>© 2025 JobBoard MVP</p></footer>
+
+  <script>
+    const API = 'http://localhost:8000';
+    const token = localStorage.getItem('hr_token');
+    const company = localStorage.getItem('hr_company');
+    if (!token) window.location.href = 'hr-login.html';
+    document.getElementById('company-label').textContent = company || '';
+    function logout() { localStorage.clear(); window.location.href = 'hr-login.html'; }
+    const scoreClass = s => s >= 8 ? 'excellent' : s >= 6 ? 'good' : 'low';
+    const scoreLabel = s => s >= 8 ? '🌟 Excellent' : s >= 6 ? '✅ Good' : '❌ Below threshold';
+    const qualityColor = l => l === 'HIGH' ? '#22c55e' : l === 'MEDIUM' ? '#f59e0b' : '#ef4444';
+    function formatDate(iso) {
+      return new Date(iso).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
+    }
+    function breakdownBar(label, score, max) {
+      const pct = Math.round((score / max) * 100);
+      return `<div class="breakdown-row"><span class="breakdown-label">${label}</span><div class="breakdown-bar-wrap"><div class="breakdown-bar" style="width:${pct}%"></div></div><span class="breakdown-val">${score}/${max}</span></div>`;
+    }
+    function jobFitBar(skill, score) {
+      const pct = Math.round((score / 10) * 100);
+      const color = score >= 7 ? '#6366f1' : score >= 4 ? '#f59e0b' : '#ef4444';
+      return `<div class="breakdown-row"><span class="breakdown-label">${skill}</span><div class="breakdown-bar-wrap"><div class="breakdown-bar" style="width:${pct}%;background:${color}"></div></div><span class="breakdown-val">${score.toFixed(1)}/10</span></div>`;
+    }
+    const STATUS_CONFIG = {
+      new:      { label:'New',      icon:'🔵', cls:'status-new'      },
+      read:     { label:'Read',     icon:'👁️',  cls:'status-read'     },
+      starred:  { label:'Starred',  icon:'⭐',  cls:'status-starred'  },
+      rejected: { label:'Rejected', icon:'❌',  cls:'status-rejected' },
+    };
+    async function setStatus(appId, newStatus) {
+      try {
+        await fetch(`${API}/api/hr/applications/${appId}/status`, {
+          method: 'PATCH',
+          headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: newStatus }),
+        });
+        const card = document.querySelector(`[data-app-id="${appId}"]`);
+        if (card) {
+          const cfg = STATUS_CONFIG[newStatus] || STATUS_CONFIG.new;
+          card.querySelector('.status-badge').textContent = `${cfg.icon} ${cfg.label}`;
+          card.querySelector('.status-badge').className = `status-badge ${cfg.cls}`;
+          card.querySelectorAll('.status-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.status === newStatus));
+        }
+      } catch(e) { console.error('Status update failed', e); }
+    }
+    function statusButtons(appId, cur) {
+      return Object.entries(STATUS_CONFIG).map(([key, cfg]) =>
+        `<button class="status-btn ${cur===key?'active':''}" data-status="${key}" onclick="setStatus(${appId},'${key}')" title="${cfg.label}">${cfg.icon}</button>`
+      ).join('');
+    }
+    function renderCard(a, rank) {
+      const bd = a.quality_breakdown || {};
+      const jfbd = a.job_fit_breakdown || {};
+      const hasBD = Object.keys(bd).length > 0;
+      const hasJF = Object.keys(jfbd).length > 0;
+      const hasMl = a.ml_available && a.ml_score !== null;
+      const sc = scoreClass(a.final_score);
+      const status = a.status || 'new';
+      const sCfg = STATUS_CONFIG[status] || STATUS_CONFIG.new;
+      return `
+      <div class="candidate-card ${sc==='low'?'card-rejected':''}" data-app-id="${a.id}">
+        <div class="candidate-rank">${rank}</div>
+        <div class="candidate-info">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <div class="candidate-name">${a.name} ${a.surname}</div>
+            <span class="status-badge ${sCfg.cls}">${sCfg.icon} ${sCfg.label}</span>
+          </div>
+          <div class="candidate-contact">
+            <a href="mailto:${a.email}">${a.email}</a> <span>·</span> <span>${a.phone}</span> <span>·</span> <span>${a.word_count??'?'} words</span>
+          </div>
+          <div class="candidate-summary"><strong>🤖 Job fit:</strong> ${a.job_fit_summary||'<em style="color:#94a3b8">No summary</em>'}</div>
+          ${hasJF?`<details class="quality-details" open><summary><strong>Job Fit breakdown</strong> — per required skill</summary><div class="breakdown-grid">${Object.entries(jfbd).map(([s,v])=>jobFitBar(s,v)).join('')}</div></details>`:''}
+          ${hasBD?`<details class="quality-details"><summary>CV Quality: <span style="color:${qualityColor(a.quality_label)};font-weight:700">${a.quality_label}</span> &nbsp;(${(a.quality_score*10).toFixed(0)}/100 pts)</summary><div class="breakdown-grid">${breakdownBar('Length',bd.length?.score??0,bd.length?.max??20)}${breakdownBar('Contact',bd.contact?.score??0,bd.contact?.max??15)}${breakdownBar('Education',bd.education?.score??0,bd.education?.max??15)}${breakdownBar('Experience',bd.experience?.score??0,bd.experience?.max??20)}${breakdownBar('Skills',bd.skills?.score??0,bd.skills?.max??15)}${breakdownBar('Structure',bd.structure?.score??0,bd.structure?.max??15)}</div></details>`:''}
+          <div class="status-actions"><span style="font-size:.75rem;color:var(--muted);font-weight:600">Set status:</span> ${statusButtons(a.id, status)}</div>
+          <div class="candidate-meta">Applied ${formatDate(a.created_at)}</div>
+        </div>
+        <div class="candidate-score-block">
+          <div class="score-circle ${sc}"><span class="score-value">${a.final_score.toFixed(1)}</span><span class="score-max">/10</span></div>
+          <div class="score-label ${sc}">${scoreLabel(a.final_score)}</div>
+          <div class="sub-scores">
+            <div class="sub-score"><span class="sub-score-label">Job fit</span><span class="sub-score-val">${a.job_fit_score?.toFixed(1)??'?'}</span></div>
+            <div class="sub-score"><span class="sub-score-label">Quality</span><span class="sub-score-val">${a.quality_score?.toFixed(1)??'?'}</span></div>
+            ${hasMl?`<div class="sub-score"><span class="sub-score-label">ML</span><span class="sub-score-val">${a.ml_score.toFixed(1)}</span></div>`:''}
+          </div>
+        </div>
+      </div>`;
+    }
+    let allApps = [], qualifiedApps = [];
+    function toggleRejected() {
+      const show = document.getElementById('show-rejected').checked;
+      const rejected = allApps.filter(a => a.final_score < 6);
+      const sec = document.getElementById('rejected-section');
+      if (show && rejected.length > 0) {
+        document.getElementById('rejected-count').textContent = rejected.length;
+        document.getElementById('rejected-list').innerHTML = rejected.map((a,i)=>renderCard(a,`#R${i+1}`)).join('');
+        sec.style.display = 'block';
+      } else { sec.style.display = 'none'; }
+    }
+    async function loadApplications() {
+      try {
+        const [res, resAll] = await Promise.all([
+          fetch(`${API}/api/hr/applications`,     { headers:{ Authorization:`Bearer ${token}` } }),
+          fetch(`${API}/api/hr/all-applications`, { headers:{ Authorization:`Bearer ${token}` } }),
+        ]);
+        if (res.status === 401) { localStorage.clear(); window.location.href = 'hr-login.html'; return; }
+        const data = await res.json();
+        const dataAll = await resAll.json();
+        qualifiedApps = data.applications || [];
+        allApps = (dataAll||[]).map(a => {
+          try { a.quality_breakdown = JSON.parse(a.quality_breakdown||'{}'); } catch { a.quality_breakdown={}; }
+          try { a.ml_confidence     = JSON.parse(a.ml_confidence||'{}');     } catch { a.ml_confidence={}; }
+          try { a.job_fit_breakdown = JSON.parse(a.job_fit_breakdown||'{}'); } catch { a.job_fit_breakdown={}; }
+          return a;
+        });
+        const totalRejected = allApps.filter(a => a.final_score < 6).length;
+        if (data.job) {
+          document.getElementById('dash-title').textContent = data.job.title;
+          document.getElementById('dash-subtitle').textContent = `${qualifiedApps.length} qualified · ${totalRejected} rejected · ${allApps.length} total`;
+        }
+        const list = document.getElementById('candidates-list');
+        if (!qualifiedApps || qualifiedApps.length === 0) {
+          list.innerHTML = `<div class="empty-state"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><p>No qualified candidates yet.</p><p class="hint">Toggle "Show rejected" to see all submissions.</p></div>`;
+        } else {
+          list.innerHTML = qualifiedApps.map((a,i) => renderCard(a, `#${i+1}`)).join('');
+        }
+      } catch(e) {
+        const box = document.getElementById('alert-box');
+        box.textContent = `Failed to load: ${e.message}. Is the backend running?`;
+        box.style.display = 'block';
+        document.getElementById('candidates-list').innerHTML = '';
+      }
+    }
+    loadApplications();
+  </script>
+</body>
+</html>

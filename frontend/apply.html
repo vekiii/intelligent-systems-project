@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Apply – JobBoard</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <a href="index.html" class="logo">⚡ JobBoard</a>
+      <a href="hr-login.html" class="btn btn-outline">HR Login</a>
+    </div>
+  </header>
+
+  <main class="container narrow">
+
+    <!-- Job detail -->
+    <div id="job-detail" class="card">
+      <div class="skeleton tall"></div>
+    </div>
+
+    <!-- Application form -->
+    <div id="form-section" class="card" style="display:none">
+      <h2>Submit your application</h2>
+      <p class="form-note">Your CV will be reviewed by our AI system before reaching the hiring team.</p>
+
+      <div id="form-error" class="alert alert-error" style="display:none"></div>
+      <div id="form-success" class="alert alert-success" style="display:none"></div>
+
+      <div id="the-form">
+        <div class="form-row two-col">
+          <div class="form-group">
+            <label>First name *</label>
+            <input id="name" type="text" placeholder="Jane" required />
+          </div>
+          <div class="form-group">
+            <label>Surname *</label>
+            <input id="surname" type="text" placeholder="Doe" required />
+          </div>
+        </div>
+
+        <div class="form-row two-col">
+          <div class="form-group">
+            <label>Email *</label>
+            <input id="email" type="email" placeholder="jane@example.com" required />
+          </div>
+          <div class="form-group">
+            <label>Phone *</label>
+            <input id="phone" type="tel" placeholder="+1 555 000 0000" required />
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>CV / Résumé (PDF only) *</label>
+          <div class="file-drop" id="file-drop">
+            <input type="file" id="cv-file" accept=".pdf" hidden />
+            <div id="file-label" onclick="document.getElementById('cv-file').click()">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14,2 14,8 20,8"/>
+                <line x1="12" y1="18" x2="12" y2="12"/>
+                <polyline points="9,15 12,12 15,15"/>
+              </svg>
+              <p>Click to upload or drag & drop your PDF</p>
+            </div>
+          </div>
+        </div>
+
+        <button id="submit-btn" class="btn btn-primary full" onclick="submitApplication()">
+          Submit Application
+        </button>
+      </div>
+    </div>
+
+  </main>
+
+  <footer>
+    <p>© 2025 JobBoard MVP — powered by AI screening</p>
+  </footer>
+
+  <script>
+    const API    = 'http://localhost:8000';
+    const params = new URLSearchParams(window.location.search);
+    const jobId  = params.get('job');
+
+    if (!jobId) window.location.href = 'index.html';
+
+    // ── Load job detail ──────────────────────────────────────────────
+    async function loadJob() {
+      try {
+        const res = await fetch(`${API}/api/jobs/${jobId}`);
+        if (!res.ok) throw new Error();
+        const job = await res.json();
+
+        document.title = `${job.title} – JobBoard`;
+
+        document.getElementById('job-detail').innerHTML = `
+          <div class="job-detail-header">
+            <span class="company-badge large">${job.company}</span>
+            <h1>${job.title}</h1>
+          </div>
+          <h3>About the role</h3>
+          <p class="job-description">${job.description.replace(/\n/g, '<br/>')}</p>
+          <h3>Required skills</h3>
+          <div class="job-skills">
+            ${job.requirements.split(',').map(s =>
+              `<span class="skill-tag">${s.trim()}</span>`
+            ).join('')}
+          </div>
+        `;
+
+        document.getElementById('form-section').style.display = 'block';
+      } catch {
+        document.getElementById('job-detail').innerHTML =
+          '<p class="error">Job not found. <a href="index.html">Go back</a></p>';
+      }
+    }
+
+    // ── File drag & drop ────────────────────────────────────────────
+    const drop = document.getElementById('file-drop');
+    const fileInput = document.getElementById('cv-file');
+
+    fileInput.addEventListener('change', () => updateFileLabel(fileInput.files[0]));
+    drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('drag-over'); });
+    drop.addEventListener('dragleave', () => drop.classList.remove('drag-over'));
+    drop.addEventListener('drop', e => {
+      e.preventDefault();
+      drop.classList.remove('drag-over');
+      const file = e.dataTransfer.files[0];
+      if (file && file.type === 'application/pdf') {
+        fileInput.files = e.dataTransfer.files;
+        updateFileLabel(file);
+      }
+    });
+
+    function updateFileLabel(file) {
+      if (!file) return;
+      document.getElementById('file-label').innerHTML = `
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="1.5">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14,2 14,8 20,8"/>
+        </svg>
+        <p style="color:#22c55e;font-weight:600">${file.name}</p>
+      `;
+    }
+
+    // ── Submit ───────────────────────────────────────────────────────
+    async function submitApplication() {
+      const name    = document.getElementById('name').value.trim();
+      const surname = document.getElementById('surname').value.trim();
+      const email   = document.getElementById('email').value.trim();
+      const phone   = document.getElementById('phone').value.trim();
+      const cv      = fileInput.files[0];
+
+      const errEl = document.getElementById('form-error');
+      errEl.style.display = 'none';
+
+      if (!name || !surname || !email || !phone) {
+        errEl.textContent = 'Please fill in all required fields.';
+        errEl.style.display = 'block';
+        return;
+      }
+      if (!cv) {
+        errEl.textContent = 'Please upload your CV in PDF format.';
+        errEl.style.display = 'block';
+        return;
+      }
+
+      const btn = document.getElementById('submit-btn');
+      btn.disabled = true;
+      btn.textContent = '⏳ Submitting & analysing CV…';
+
+      const fd = new FormData();
+      fd.append('job_id', jobId);
+      fd.append('name',    name);
+      fd.append('surname', surname);
+      fd.append('email',   email);
+      fd.append('phone',   phone);
+      fd.append('cv',      cv);
+
+      try {
+        const res  = await fetch(`${API}/api/apply`, { method: 'POST', body: fd });
+        const data = await res.json();
+
+        if (!res.ok) throw new Error(data.detail || 'Submission failed');
+
+        document.getElementById('the-form').style.display = 'none';
+        const suc = document.getElementById('form-success');
+        suc.innerHTML = `
+          <strong>🎉 Application submitted!</strong><br/>
+          ${data.message}
+        `;
+        suc.style.display = 'block';
+      } catch (e) {
+        errEl.textContent = e.message;
+        errEl.style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = 'Submit Application';
+      }
+    }
+
+    loadJob();
+  </script>
+</body>
+</html>
