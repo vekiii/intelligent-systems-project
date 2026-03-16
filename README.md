@@ -66,8 +66,8 @@ project-root/
 
 ### 1. Clone the repository
 ```bash
-git clone https://github.com/YOUR_USERNAME/YOUR_REPO_NAME.git
-cd YOUR_REPO_NAME
+git clone https://github.com/vekiii/intelligent-systems-project.git
+cd intelligent-systems-project
 ```
 
 ### 2. Install Python dependencies
