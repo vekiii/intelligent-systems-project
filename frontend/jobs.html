@@ -1,68 +1,103 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>JobBoard – Open Positions</title>
-  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: { bg:'#080812', card:'#0f0f1f', border:'#1a1a2e', accent:'#818cf8', 'accent-d':'#6366f1' },
+          fontFamily: { display:['Syne','sans-serif'], body:['Plus Jakarta Sans','sans-serif'] },
+        }
+      }
+    }
+  </script>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Plus+Jakarta+Sans:wght@400;500;600&display=swap" rel="stylesheet"/>
+  <style>
+    body { background:#080812; font-family:'Plus Jakarta Sans',sans-serif; }
+    .card-hover { transition:transform .2s ease,box-shadow .2s ease; }
+    .card-hover:hover { transform:translateY(-3px); box-shadow:0 16px 40px rgba(129,140,248,.1); }
+    @keyframes fadeUp { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
+    .fade-up { animation:fadeUp .5s ease forwards; }
+    @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+    .skeleton { background:linear-gradient(90deg,#0f0f1f 25%,#1a1a2e 50%,#0f0f1f 75%); background-size:200% 100%; animation:shimmer 1.4s infinite; border-radius:16px; height:220px; }
+  </style>
 </head>
-<body>
-  <header>
-    <div class="header-inner">
-      <a href="index.html" class="logo">⚡ JobBoard</a>
-      <a href="hr-login.html" class="btn btn-outline">HR Portal</a>
+<body class="text-slate-100 min-h-screen flex flex-col">
+
+  <header class="border-b border-border/60 backdrop-blur-sm sticky top-0 z-50" style="background:rgba(8,8,18,.85)">
+    <div class="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+      <a href="index.html" class="font-display text-xl font-bold text-white hover:text-accent transition-colors">⚡ JobBoard</a>
+      <a href="hr-login.html" class="text-sm font-semibold text-slate-300 hover:text-accent transition-colors px-4 py-2 rounded-lg border border-border hover:border-accent/40">HR Portal →</a>
     </div>
   </header>
 
-  <main class="container">
-    <section class="hero">
-      <a href="index.html" class="back-link">← Home</a>
-      <h1>Open Positions</h1>
-      <p>We have <strong id="job-count">…</strong> open positions waiting for you.</p>
-    </section>
+  <main class="flex-1 max-w-6xl mx-auto px-6 py-16 w-full"
+        x-data="{
+          jobs: [],
+          loading: true,
+          error: '',
+          async init() {
+            try {
+              const res = await fetch('http://localhost:8000/api/jobs');
+              this.jobs = await res.json();
+            } catch(e) {
+              this.error = 'Could not load jobs. Make sure the backend is running.';
+            } finally {
+              this.loading = false;
+            }
+          }
+        }">
 
-    <div id="jobs-grid" class="jobs-grid">
+    <div class="mb-12">
+      <a href="index.html" class="text-xs font-semibold text-slate-500 hover:text-accent transition-colors uppercase tracking-wider">← Home</a>
+      <h1 class="font-display text-4xl font-bold text-white mt-3">Open Positions</h1>
+      <p class="text-slate-400 mt-2" x-show="!loading">
+        <span x-text="jobs.length"></span> positions available
+      </p>
+    </div>
+
+    <!-- Error -->
+    <div x-show="error" class="bg-red-500/10 border border-red-500/30 text-red-400 rounded-xl px-5 py-4 text-sm mb-8" x-text="error"></div>
+
+    <!-- Skeletons -->
+    <div x-show="loading" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
       <div class="skeleton"></div>
       <div class="skeleton"></div>
       <div class="skeleton"></div>
     </div>
+
+    <!-- Job cards -->
+    <div x-show="!loading && !error" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <template x-for="(job, i) in jobs" :key="job.id">
+        <div class="card-hover bg-card border border-border rounded-2xl p-6 flex flex-col gap-4 fade-up"
+             :style="`animation-delay:${i*0.1}s`">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold uppercase tracking-widest text-accent bg-accent/10 border border-accent/20 px-3 py-1 rounded-full" x-text="job.company"></span>
+          </div>
+          <h2 class="font-display font-bold text-white text-xl" x-text="job.title"></h2>
+          <p class="text-slate-400 text-sm leading-relaxed flex-1" x-text="job.description.slice(0,110) + '…'"></p>
+          <div class="flex flex-wrap gap-2">
+            <template x-for="skill in job.requirements.split(',').slice(0,4)" :key="skill">
+              <span class="text-xs font-semibold text-slate-400 bg-slate-800 border border-border px-2.5 py-1 rounded-lg" x-text="skill.trim()"></span>
+            </template>
+            <span x-show="job.requirements.split(',').length > 4"
+                  class="text-xs font-semibold text-slate-500 bg-slate-800 border border-border px-2.5 py-1 rounded-lg"
+                  x-text="'+' + (job.requirements.split(',').length - 4) + ' more'"></span>
+          </div>
+          <a :href="`apply.html?job=${job.id}`"
+             class="mt-1 w-full text-center bg-accent hover:bg-accent-d text-white font-semibold py-2.5 rounded-xl transition-all duration-200 hover:scale-[1.02] text-sm">
+            View & Apply →
+          </a>
+        </div>
+      </template>
+    </div>
   </main>
 
-  <footer>
-    <p>© 2025 JobBoard MVP — powered by AI screening</p>
-  </footer>
-
-  <script>
-    const API = 'http://localhost:8000';
-
-    async function loadJobs() {
-      try {
-        const res  = await fetch(`${API}/api/jobs`);
-        const jobs = await res.json();
-        document.getElementById('job-count').textContent = jobs.length;
-        const grid = document.getElementById('jobs-grid');
-        grid.innerHTML = jobs.map(job => `
-          <div class="job-card">
-            <div class="job-card-header">
-              <span class="company-badge">${job.company}</span>
-            </div>
-            <h2 class="job-title">${job.title}</h2>
-            <p class="job-snippet">${job.description.slice(0, 120)}…</p>
-            <div class="job-skills">
-              ${job.requirements.split(',').map(s =>
-                `<span class="skill-tag">${s.trim()}</span>`
-              ).join('')}
-            </div>
-            <a href="apply.html?job=${job.id}" class="btn btn-primary">View & Apply</a>
-          </div>
-        `).join('');
-      } catch (e) {
-        document.getElementById('jobs-grid').innerHTML =
-          '<p class="error">Could not load jobs. Make sure the backend is running.</p>';
-      }
-    }
-
-    loadJobs();
-  </script>
+  <footer class="border-t border-border py-6 text-center text-xs text-slate-600">© 2025 JobBoard MVP</footer>
 </body>
 </html>

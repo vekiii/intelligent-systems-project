@@ -73,6 +73,11 @@ def ml_model_available() -> bool:
 # ══════════════════════════════════════════════════════════════════════════════
 
 def score_cv_quality(text: str) -> dict:
+    """
+    Rule-based CV quality scorer — used ONLY for the dashboard breakdown display.
+    The actual quality score used in final_score calculation comes from the ML model.
+    Covers all 24 job fields in the Kaggle dataset.
+    """
     if not isinstance(text, str) or not text.strip():
         return {"total": 0, "label": "LOW", "breakdown": {}, "word_count": 0}
 
@@ -80,27 +85,37 @@ def score_cv_quality(text: str) -> dict:
     word_count = len(text_lower.split())
     scores = {}
 
-    # 1. Length (max 20)
-    if 300 <= word_count <= 1000:
-        scores["length"] = 20
-    elif 150 <= word_count < 300 or 1000 < word_count <= 1500:
-        scores["length"] = 12
-    elif word_count > 1500:
-        scores["length"] = 6
-    else:
-        scores["length"] = 2
+    # ── 1. LENGTH (max 20) — 20 granular conditions ───────────────────────────
+    if   450 <= word_count <= 700:                                   scores["length"] = 20
+    elif 400 <= word_count <  450 or  701 <= word_count <= 750:     scores["length"] = 19
+    elif 350 <= word_count <  400 or  751 <= word_count <= 800:     scores["length"] = 18
+    elif 300 <= word_count <  350 or  801 <= word_count <= 850:     scores["length"] = 17
+    elif 275 <= word_count <  300 or  851 <= word_count <= 900:     scores["length"] = 16
+    elif 250 <= word_count <  275 or  901 <= word_count <= 950:     scores["length"] = 15
+    elif 225 <= word_count <  250 or  951 <= word_count <= 1000:    scores["length"] = 14
+    elif 200 <= word_count <  225 or 1001 <= word_count <= 1050:    scores["length"] = 13
+    elif 175 <= word_count <  200 or 1051 <= word_count <= 1100:    scores["length"] = 12
+    elif 150 <= word_count <  175 or 1101 <= word_count <= 1200:    scores["length"] = 11
+    elif 125 <= word_count <  150 or 1201 <= word_count <= 1300:    scores["length"] = 10
+    elif 100 <= word_count <  125 or 1301 <= word_count <= 1400:    scores["length"] = 9
+    elif  80 <= word_count <  100 or 1401 <= word_count <= 1500:    scores["length"] = 8
+    elif  60 <= word_count <   80 or 1501 <= word_count <= 1700:    scores["length"] = 7
+    elif  50 <= word_count <   60 or 1701 <= word_count <= 1900:    scores["length"] = 6
+    elif  40 <= word_count <   50 or 1901 <= word_count <= 2100:    scores["length"] = 5
+    elif  30 <= word_count <   40 or 2101 <= word_count <= 2400:    scores["length"] = 4
+    elif  20 <= word_count <   30 or 2401 <= word_count <= 2800:    scores["length"] = 3
+    elif  10 <= word_count <   20 or 2801 <= word_count <= 3500:    scores["length"] = 2
+    else:                                                            scores["length"] = 1
 
-    # 2. Contact info (max 15)
+    # ── 2. CONTACT INFO (max 15) ──────────────────────────────────────────────
     contact = 0
-    if re.search(r"[\w.+-]+@[\w-]+\.[\w.]+", text):
-        contact += 6
-    if re.search(r"(\+?\d[\d\s\-().]{7,15}\d)", text):
-        contact += 5
+    if re.search(r"[\w.+-]+@[\w-]+\.[\w.]+", text):   contact += 6
+    if re.search(r"(\+?\d[\d\s\-().]{7,15}\d)", text): contact += 5
     if any(x in text_lower for x in ["linkedin", "github", "portfolio", "website"]):
         contact += 4
     scores["contact"] = min(contact, 15)
 
-    # 3. Education (max 15)
+    # ── 3. EDUCATION (max 15) ─────────────────────────────────────────────────
     edu_map = {
         "phd": 15, "doctorate": 15, "ph.d": 15,
         "master": 12, "mba": 12, "msc": 12,
@@ -111,26 +126,126 @@ def score_cv_quality(text: str) -> dict:
     edu = max((v for k, v in edu_map.items() if k in text_lower), default=0)
     scores["education"] = min(edu, 15)
 
-    # 4. Experience (max 20)
+    # ── 4. EXPERIENCE (max 20) — expanded action words ────────────────────────
     exp = 0
     m = re.search(r"(\d+)\+?\s*years?\s*(of)?\s*experience", text_lower)
     if m:
         yrs = int(m.group(1))
         exp += 20 if yrs >= 10 else 15 if yrs >= 5 else 10 if yrs >= 2 else 6
-    action_words = ["managed", "developed", "led", "designed", "implemented",
-                    "achieved", "delivered", "increased", "reduced", "built"]
-    exp += min(sum(1 for w in action_words if w in text_lower) * 2, 10)
+
+    action_words = [
+        "managed", "led", "supervised", "directed", "coordinated", "oversaw",
+        "administered", "spearheaded", "championed", "facilitated", "delegated",
+        "mentored", "coached", "guided", "headed",
+        "developed", "built", "created", "designed", "implemented", "established",
+        "launched", "founded", "initiated", "introduced", "produced", "engineered",
+        "constructed", "fabricated", "assembled",
+        "achieved", "delivered", "improved", "increased", "reduced", "optimized",
+        "enhanced", "streamlined", "maximized", "minimized", "accelerated",
+        "transformed", "generated", "secured", "saved",
+        "analyzed", "researched", "evaluated", "assessed", "investigated",
+        "examined", "identified", "diagnosed", "audited", "reviewed",
+        "forecasted", "modeled", "calculated", "reported",
+        "presented", "negotiated", "communicated", "collaborated", "consulted",
+        "advised", "trained", "educated", "pitched", "published",
+        "programmed", "coded", "configured", "integrated", "deployed",
+        "automated", "tested", "debugged", "maintained", "upgraded",
+        "migrated", "refactored", "architected",
+        "sold", "acquired", "converted", "retained", "expanded", "grew",
+        "closed", "prospected", "upsold",
+        "treated", "administered", "rehabilitated", "monitored", "cared",
+        "budgeted", "reconciled", "allocated", "invested", "filed",
+        "recruited", "onboarded", "lectured",
+        "operated", "installed", "repaired", "inspected", "surveyed",
+    ]
+    unique_action_words = list(dict.fromkeys(action_words))
+    exp += min(sum(1 for w in unique_action_words if w in text_lower), 10)
     scores["experience"] = min(exp, 20)
 
-    # 5. Technical skills (max 15)
-    tech = ["python", "java", "javascript", "c++", "c#", "sql", "r", "scala",
-            "react", "angular", "vue", "django", "flask", "spring", "node",
-            "tensorflow", "pytorch", "sklearn", "pandas", "numpy",
-            "aws", "azure", "gcp", "docker", "kubernetes", "git", "linux",
-            "tableau", "power bi", "excel", "spark", "hadoop", "typescript"]
-    scores["skills"] = min(sum(1 for k in tech if k in text_lower) * 3, 15)
+    # ── 5. DOMAIN SKILLS (max 15) — covers all 24 job categories ─────────────
+    domain_skills = [
+        # IT
+        "python", "java", "javascript", "typescript", "c++", "c#", "go", "rust",
+        "swift", "kotlin", "php", "ruby", "r", "scala", "bash",
+        "react", "angular", "vue", "node", "django", "flask", "spring", "fastapi",
+        "html", "css", "tailwind", "bootstrap",
+        "tensorflow", "pytorch", "sklearn", "pandas", "numpy", "keras",
+        "aws", "azure", "gcp", "docker", "kubernetes", "git", "linux",
+        "terraform", "ansible", "jenkins", "ci/cd",
+        "sql", "postgresql", "mysql", "mongodb", "redis", "elasticsearch",
+        "tableau", "power bi", "spark", "hadoop", "jupyter",
+        "rest api", "graphql", "microservices", "agile", "scrum",
+        # Finance / Accounting
+        "quickbooks", "sap", "xero", "gaap", "ifrs", "erp",
+        "financial modeling", "bloomberg", "vba", "budgeting", "forecasting",
+        "tax", "audit", "reconciliation", "cfa",
+        # Legal
+        "westlaw", "lexisnexis", "litigation", "contract drafting", "compliance",
+        "arbitration", "due diligence", "intellectual property", "legal writing",
+        # Agriculture
+        "crop management", "irrigation", "agronomy", "soil science",
+        "hydroponics", "gis", "livestock", "horticulture",
+        # Apparel
+        "fashion design", "textile", "pattern making", "merchandising",
+        "garment construction", "trend analysis",
+        # Arts
+        "photoshop", "illustrator", "indesign", "after effects", "premiere pro",
+        "lightroom", "blender", "maya", "cinema 4d", "procreate",
+        # Automobile
+        "solidworks", "catia", "ansys", "automotive", "powertrain", "adas",
+        "embedded systems", "matlab",
+        # Aviation
+        "faa", "easa", "icao", "atpl", "flight operations", "aviation safety",
+        # Banking
+        "bloomberg terminal", "risk management", "credit analysis", "kyc",
+        "aml", "swift", "fintech", "basel", "trade finance", "treasury",
+        # BPO
+        "crm", "salesforce", "zendesk", "freshdesk", "call center", "sla",
+        "customer satisfaction", "csat", "nps",
+        # Business Development
+        "hubspot", "pipedrive", "market research", "pitch deck", "b2b", "b2c",
+        "lead generation", "account management", "go-to-market",
+        # Chef
+        "haccp", "food safety", "culinary arts", "menu planning", "food costing",
+        "catering", "hospitality", "kitchen management",
+        # Construction
+        "revit", "bim", "primavera", "ms project", "quantity surveying",
+        "structural", "civil engineering", "site supervision", "tendering",
+        # Consulting
+        "strategy", "management consulting", "business analysis",
+        "change management", "six sigma", "lean", "process improvement",
+        # Design
+        "figma", "sketch", "adobe xd", "invision", "wireframing", "prototyping",
+        "user research", "usability testing", "design thinking",
+        # Digital Media
+        "seo", "sem", "google analytics", "google ads", "facebook ads",
+        "social media", "wordpress", "mailchimp", "email marketing", "copywriting",
+        # Engineering
+        "labview", "plc", "scada", "pid", "autocad",
+        "mechanical engineering", "electrical engineering", "quality assurance",
+        # Fitness
+        "personal training", "nutrition", "exercise physiology", "cpr",
+        "nasm", "acsm", "strength conditioning", "yoga",
+        # Healthcare
+        "ehr", "emr", "hipaa", "icd-10", "medical coding", "clinical",
+        "nursing", "patient care", "pharmacology", "radiology", "surgery",
+        # HR
+        "hris", "workday", "bamboohr", "recruiting", "onboarding", "payroll",
+        "performance management", "employee relations", "talent acquisition",
+        # Public Relations
+        "media relations", "press release", "crisis communication",
+        "brand management", "event management",
+        # Sales
+        "pipeline management", "cold calling", "territory management",
+        "quota", "prospecting", "revenue growth", "customer retention",
+        # Teaching
+        "curriculum development", "lms", "moodle", "lesson planning",
+        "classroom management", "e-learning", "instructional design",
+    ]
+    matched = sum(1 for k in domain_skills if k in text_lower)
+    scores["skills"] = min(round(matched * 0.75), 15)
 
-    # 6. Structure / sections (max 15)
+    # ── 6. STRUCTURE (max 15) ─────────────────────────────────────────────────
     sections = ["summary", "objective", "profile", "education", "experience",
                 "work history", "skills", "competencies", "projects",
                 "achievements", "certifications", "awards", "publications"]
@@ -297,49 +412,42 @@ def analyse_cv(cv_path: str, job_title: str, requirements: str) -> dict:
             cv_text += (page.extract_text() or "") + "\n"
     cv_text = cv_text.strip()
 
-    # Component 1 — quality rules
-    quality        = score_cv_quality(cv_text)
-    quality_score  = round((quality["total"] / 100) * 10, 2)   # normalise to 0–10
+    # ── Component 1 — ML model (used for actual quality SCORE) ───────────────
+    ml = score_cv_ml(cv_text)
+    if ml["score"] is None:
+        raise ValueError("ML model not loaded. Run train.py first to generate models/cv_classifier.pkl")
 
-    # Component 2 — ML model
-    ml             = score_cv_ml(cv_text)
-    ml_available   = ml["score"] is not None
+    # ── Component 1b — Rules (used ONLY for dashboard breakdown display) ──────
+    quality = score_cv_quality(cv_text)
+    word_count = quality["word_count"]
 
-    # Component 3 — Claude job fit
-    job_fit        = score_cv_job_fit(cv_text, job_title, requirements)
+    # ── Component 2 — Ollama job fit ──────────────────────────────────────────
+    job_fit = score_cv_job_fit(cv_text, job_title, requirements)
 
-    # Weighted final score
-    if ml_available:
-        final_score = round(
-            quality_score     * 0.35 +
-            ml["score"]       * 0.15 +
-            job_fit["score"]  * 0.50,
-            2
-        )
-    else:
-        final_score = round(
-            quality_score    * 0.40 +
-            job_fit["score"] * 0.60,
-            2
-        )
+    # ── Final score: 40% ML quality + 60% Ollama job fit ─────────────────────
+    final_score = round(
+        ml["score"]      * 0.40 +
+        job_fit["score"] * 0.60,
+        2
+    )
 
     return {
-        "final_score":          final_score,
-        # Component 1
-        "quality_score":        quality_score,
-        "quality_label":        quality["label"],
-        "quality_breakdown":    quality["breakdown"],
-        # Component 2
-        "ml_score":             ml["score"],
-        "ml_label":             ml["label"],
-        "ml_confidence":        ml["confidence"],
-        "ml_available":         ml_available,
-        # Component 3
-        "job_fit_score":        job_fit["score"],
-        "job_fit_summary":      job_fit["summary"],
-        "job_fit_breakdown":    job_fit.get("breakdown", {}),
+        "final_score":       final_score,
+        # Quality score comes from ML model (0–10 scale)
+        "quality_score":     ml["score"],
+        "quality_label":     ml["label"],
+        # Breakdown display comes from rules (6 criteria bars)
+        "quality_breakdown": quality["breakdown"],
+        # Job fit
+        "job_fit_score":     job_fit["score"],
+        "job_fit_summary":   job_fit["summary"],
+        "job_fit_breakdown": job_fit.get("breakdown", {}),
         # Meta
-        "word_count":           quality["word_count"],
+        "ml_score":          ml["score"],
+        "ml_label":          ml["label"],
+        "ml_confidence":     ml["confidence"],
+        "ml_available":      True,
+        "word_count":        word_count,
     }
 
 

@@ -1,207 +1,221 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Apply – JobBoard</title>
-  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: { bg:'#080812', card:'#0f0f1f', border:'#1a1a2e', accent:'#818cf8', 'accent-d':'#6366f1' },
+          fontFamily: { display:['Syne','sans-serif'], body:['Plus Jakarta Sans','sans-serif'] },
+        }
+      }
+    }
+  </script>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Plus+Jakarta+Sans:wght@400;500;600&display=swap" rel="stylesheet"/>
+  <style>
+    body { background:#080812; font-family:'Plus Jakarta Sans',sans-serif; }
+    @keyframes fadeUp { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
+    .fade-up { animation:fadeUp .5s ease forwards; }
+    input[type="file"] { display:none; }
+    .drop-zone { border:2px dashed #1a1a2e; transition:border-color .2s, background .2s; }
+    .drop-zone:hover, .drop-zone.over { border-color:#818cf8; background:rgba(129,140,248,.05); }
+    input:focus { outline:none; }
+  </style>
 </head>
-<body>
-  <header>
-    <div class="header-inner">
-      <a href="index.html" class="logo">⚡ JobBoard</a>
-      <a href="hr-login.html" class="btn btn-outline">HR Login</a>
+<body class="text-slate-100 min-h-screen flex flex-col"
+      x-data="{
+        job: null,
+        loading: true,
+        submitting: false,
+        submitted: false,
+        error: '',
+        formError: '',
+        fileName: '',
+        fileObj: null,
+        name: '',
+        surname: '',
+        email: '',
+        phone: '',
+        dragging: false,
+
+        get jobId() { return new URLSearchParams(window.location.search).get('job'); },
+
+        async init() {
+          if (!this.jobId) { window.location.href = 'jobs.html'; return; }
+          try {
+            const res = await fetch('http://localhost:8000/api/jobs/' + this.jobId);
+            if (!res.ok) throw new Error();
+            this.job = await res.json();
+            document.title = this.job.title + ' – JobBoard';
+          } catch {
+            this.error = 'Job not found.';
+          } finally {
+            this.loading = false;
+          }
+        },
+
+        handleFile(file) {
+          if (!file || file.type !== 'application/pdf') { this.formError = 'Please upload a PDF file.'; return; }
+          this.fileObj = file;
+          this.fileName = file.name;
+          this.formError = '';
+        },
+
+        async submit() {
+          this.formError = '';
+          if (!this.name || !this.surname || !this.email || !this.phone) {
+            this.formError = 'Please fill in all required fields.'; return;
+          }
+          if (!this.fileObj) { this.formError = 'Please upload your CV (PDF).'; return; }
+          this.submitting = true;
+          const fd = new FormData();
+          fd.append('job_id', this.jobId);
+          fd.append('name', this.name);
+          fd.append('surname', this.surname);
+          fd.append('email', this.email);
+          fd.append('phone', this.phone);
+          fd.append('cv', this.fileObj);
+          try {
+            const res = await fetch('http://localhost:8000/api/apply', { method:'POST', body:fd });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.detail || 'Submission failed');
+            this.submitted = true;
+          } catch(e) {
+            this.formError = e.message;
+          } finally {
+            this.submitting = false;
+          }
+        }
+      }">
+
+  <header class="border-b border-border/60 backdrop-blur-sm sticky top-0 z-50" style="background:rgba(8,8,18,.85)">
+    <div class="max-w-3xl mx-auto px-6 h-16 flex items-center justify-between">
+      <a href="jobs.html" class="font-display text-xl font-bold text-white hover:text-accent transition-colors">⚡ JobBoard</a>
+      <a href="hr-login.html" class="text-sm font-semibold text-slate-300 hover:text-accent transition-colors px-4 py-2 rounded-lg border border-border hover:border-accent/40">HR Portal →</a>
     </div>
   </header>
 
-  <main class="container narrow">
+  <main class="flex-1 max-w-3xl mx-auto px-6 py-12 w-full">
+
+    <a href="jobs.html" class="text-xs font-semibold text-slate-500 hover:text-accent transition-colors uppercase tracking-wider">← All Positions</a>
+
+    <!-- Loading -->
+    <div x-show="loading" class="mt-8 space-y-4">
+      <div class="bg-card border border-border rounded-2xl h-48 animate-pulse"></div>
+      <div class="bg-card border border-border rounded-2xl h-64 animate-pulse"></div>
+    </div>
+
+    <!-- Error -->
+    <div x-show="error && !loading" class="mt-8 bg-red-500/10 border border-red-500/30 text-red-400 rounded-xl px-5 py-4">
+      <span x-text="error"></span>
+      <a href="jobs.html" class="underline ml-2">Go back</a>
+    </div>
 
     <!-- Job detail -->
-    <div id="job-detail" class="card">
-      <div class="skeleton tall"></div>
-    </div>
+    <div x-show="job && !loading" class="mt-6 fade-up">
+      <div class="bg-card border border-border rounded-2xl p-8 mb-6">
+        <span class="text-xs font-bold uppercase tracking-widest text-accent bg-accent/10 border border-accent/20 px-3 py-1 rounded-full" x-text="job?.company"></span>
+        <h1 class="font-display text-3xl font-bold text-white mt-4 mb-6" x-text="job?.title"></h1>
 
-    <!-- Application form -->
-    <div id="form-section" class="card" style="display:none">
-      <h2>Submit your application</h2>
-      <p class="form-note">Your CV will be reviewed by our AI system before reaching the hiring team.</p>
+        <h3 class="text-xs font-bold uppercase tracking-widest text-slate-500 mb-3">About the role</h3>
+        <p class="text-slate-400 leading-relaxed text-sm whitespace-pre-line mb-6" x-text="job?.description"></p>
 
-      <div id="form-error" class="alert alert-error" style="display:none"></div>
-      <div id="form-success" class="alert alert-success" style="display:none"></div>
+        <h3 class="text-xs font-bold uppercase tracking-widest text-slate-500 mb-3">Required skills</h3>
+        <div class="flex flex-wrap gap-2">
+          <template x-for="skill in (job?.requirements || '').split(',')" :key="skill">
+            <span class="text-xs font-semibold text-slate-300 bg-slate-800 border border-border px-3 py-1.5 rounded-lg" x-text="skill.trim()"></span>
+          </template>
+        </div>
+      </div>
 
-      <div id="the-form">
-        <div class="form-row two-col">
-          <div class="form-group">
-            <label>First name *</label>
-            <input id="name" type="text" placeholder="Jane" required />
-          </div>
-          <div class="form-group">
-            <label>Surname *</label>
-            <input id="surname" type="text" placeholder="Doe" required />
-          </div>
+      <!-- Application form -->
+      <div class="bg-card border border-border rounded-2xl p-8">
+        <!-- Success state -->
+        <div x-show="submitted" class="text-center py-8">
+          <div class="text-5xl mb-4">🎉</div>
+          <h2 class="font-display text-2xl font-bold text-white mb-2">Application Submitted!</h2>
+          <p class="text-slate-400">Your CV is being reviewed. We'll be in touch soon.</p>
+          <a href="jobs.html" class="inline-block mt-6 text-accent hover:underline text-sm font-semibold">Browse more positions →</a>
         </div>
 
-        <div class="form-row two-col">
-          <div class="form-group">
-            <label>Email *</label>
-            <input id="email" type="email" placeholder="jane@example.com" required />
-          </div>
-          <div class="form-group">
-            <label>Phone *</label>
-            <input id="phone" type="tel" placeholder="+1 555 000 0000" required />
-          </div>
-        </div>
+        <!-- Form -->
+        <div x-show="!submitted">
+          <h2 class="font-display text-2xl font-bold text-white mb-1">Submit Application</h2>
+          <p class="text-slate-500 text-sm mb-8">Your CV will be reviewed instantly upon submission.</p>
 
-        <div class="form-group">
-          <label>CV / Résumé (PDF only) *</label>
-          <div class="file-drop" id="file-drop">
-            <input type="file" id="cv-file" accept=".pdf" hidden />
-            <div id="file-label" onclick="document.getElementById('cv-file').click()">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                <polyline points="14,2 14,8 20,8"/>
-                <line x1="12" y1="18" x2="12" y2="12"/>
-                <polyline points="9,15 12,12 15,15"/>
-              </svg>
-              <p>Click to upload or drag & drop your PDF</p>
+          <!-- Form error -->
+          <div x-show="formError" class="bg-red-500/10 border border-red-500/30 text-red-400 rounded-xl px-4 py-3 text-sm mb-6" x-text="formError"></div>
+
+          <div class="grid grid-cols-2 gap-4 mb-4">
+            <div>
+              <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">First Name *</label>
+              <input x-model="name" type="text" placeholder="Jane"
+                     class="w-full bg-bg border border-border rounded-xl px-4 py-3 text-sm text-white placeholder-slate-600 focus:border-accent transition-colors"/>
+            </div>
+            <div>
+              <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Surname *</label>
+              <input x-model="surname" type="text" placeholder="Doe"
+                     class="w-full bg-bg border border-border rounded-xl px-4 py-3 text-sm text-white placeholder-slate-600 focus:border-accent transition-colors"/>
             </div>
           </div>
-        </div>
 
-        <button id="submit-btn" class="btn btn-primary full" onclick="submitApplication()">
-          Submit Application
-        </button>
+          <div class="grid grid-cols-2 gap-4 mb-6">
+            <div>
+              <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Email *</label>
+              <input x-model="email" type="email" placeholder="jane@example.com"
+                     class="w-full bg-bg border border-border rounded-xl px-4 py-3 text-sm text-white placeholder-slate-600 focus:border-accent transition-colors"/>
+            </div>
+            <div>
+              <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Phone *</label>
+              <input x-model="phone" type="tel" placeholder="+1 555 000 0000"
+                     class="w-full bg-bg border border-border rounded-xl px-4 py-3 text-sm text-white placeholder-slate-600 focus:border-accent transition-colors"/>
+            </div>
+          </div>
+
+          <!-- File upload -->
+          <div class="mb-8">
+            <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">CV / Résumé (PDF) *</label>
+            <div class="drop-zone rounded-2xl p-8 text-center cursor-pointer"
+                 :class="dragging ? 'over' : ''"
+                 @click="$refs.fileInput.click()"
+                 @dragover.prevent="dragging = true"
+                 @dragleave="dragging = false"
+                 @drop.prevent="dragging = false; handleFile($event.dataTransfer.files[0])">
+              <input type="file" x-ref="fileInput" accept=".pdf" @change="handleFile($event.target.files[0])"/>
+              <template x-if="!fileName">
+                <div class="text-slate-500">
+                  <svg class="w-10 h-10 mx-auto mb-3 opacity-40" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9,15 12,12 15,15"/></svg>
+                  <p class="text-sm">Click to upload or drag & drop</p>
+                  <p class="text-xs mt-1 text-slate-600">PDF files only</p>
+                </div>
+              </template>
+              <template x-if="fileName">
+                <div class="text-emerald-400">
+                  <svg class="w-8 h-8 mx-auto mb-2" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/></svg>
+                  <p class="text-sm font-semibold" x-text="fileName"></p>
+                </div>
+              </template>
+            </div>
+          </div>
+
+          <button @click="submit()" :disabled="submitting"
+                  class="w-full bg-accent hover:bg-accent-d disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3.5 rounded-xl transition-all duration-200 hover:scale-[1.01] text-sm">
+            <span x-show="!submitting">Submit Application →</span>
+            <span x-show="submitting" class="flex items-center justify-center gap-2">
+              <svg class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+              Analysing CV…
+            </span>
+          </button>
+        </div>
       </div>
     </div>
-
   </main>
 
-  <footer>
-    <p>© 2025 JobBoard MVP — powered by AI screening</p>
-  </footer>
-
-  <script>
-    const API    = 'http://localhost:8000';
-    const params = new URLSearchParams(window.location.search);
-    const jobId  = params.get('job');
-
-    if (!jobId) window.location.href = 'index.html';
-
-    // ── Load job detail ──────────────────────────────────────────────
-    async function loadJob() {
-      try {
-        const res = await fetch(`${API}/api/jobs/${jobId}`);
-        if (!res.ok) throw new Error();
-        const job = await res.json();
-
-        document.title = `${job.title} – JobBoard`;
-
-        document.getElementById('job-detail').innerHTML = `
-          <div class="job-detail-header">
-            <span class="company-badge large">${job.company}</span>
-            <h1>${job.title}</h1>
-          </div>
-          <h3>About the role</h3>
-          <p class="job-description">${job.description.replace(/\n/g, '<br/>')}</p>
-          <h3>Required skills</h3>
-          <div class="job-skills">
-            ${job.requirements.split(',').map(s =>
-              `<span class="skill-tag">${s.trim()}</span>`
-            ).join('')}
-          </div>
-        `;
-
-        document.getElementById('form-section').style.display = 'block';
-      } catch {
-        document.getElementById('job-detail').innerHTML =
-          '<p class="error">Job not found. <a href="index.html">Go back</a></p>';
-      }
-    }
-
-    // ── File drag & drop ────────────────────────────────────────────
-    const drop = document.getElementById('file-drop');
-    const fileInput = document.getElementById('cv-file');
-
-    fileInput.addEventListener('change', () => updateFileLabel(fileInput.files[0]));
-    drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('drag-over'); });
-    drop.addEventListener('dragleave', () => drop.classList.remove('drag-over'));
-    drop.addEventListener('drop', e => {
-      e.preventDefault();
-      drop.classList.remove('drag-over');
-      const file = e.dataTransfer.files[0];
-      if (file && file.type === 'application/pdf') {
-        fileInput.files = e.dataTransfer.files;
-        updateFileLabel(file);
-      }
-    });
-
-    function updateFileLabel(file) {
-      if (!file) return;
-      document.getElementById('file-label').innerHTML = `
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="1.5">
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-          <polyline points="14,2 14,8 20,8"/>
-        </svg>
-        <p style="color:#22c55e;font-weight:600">${file.name}</p>
-      `;
-    }
-
-    // ── Submit ───────────────────────────────────────────────────────
-    async function submitApplication() {
-      const name    = document.getElementById('name').value.trim();
-      const surname = document.getElementById('surname').value.trim();
-      const email   = document.getElementById('email').value.trim();
-      const phone   = document.getElementById('phone').value.trim();
-      const cv      = fileInput.files[0];
-
-      const errEl = document.getElementById('form-error');
-      errEl.style.display = 'none';
-
-      if (!name || !surname || !email || !phone) {
-        errEl.textContent = 'Please fill in all required fields.';
-        errEl.style.display = 'block';
-        return;
-      }
-      if (!cv) {
-        errEl.textContent = 'Please upload your CV in PDF format.';
-        errEl.style.display = 'block';
-        return;
-      }
-
-      const btn = document.getElementById('submit-btn');
-      btn.disabled = true;
-      btn.textContent = '⏳ Submitting & analysing CV…';
-
-      const fd = new FormData();
-      fd.append('job_id', jobId);
-      fd.append('name',    name);
-      fd.append('surname', surname);
-      fd.append('email',   email);
-      fd.append('phone',   phone);
-      fd.append('cv',      cv);
-
-      try {
-        const res  = await fetch(`${API}/api/apply`, { method: 'POST', body: fd });
-        const data = await res.json();
-
-        if (!res.ok) throw new Error(data.detail || 'Submission failed');
-
-        document.getElementById('the-form').style.display = 'none';
-        const suc = document.getElementById('form-success');
-        suc.innerHTML = `
-          <strong>🎉 Application submitted!</strong><br/>
-          ${data.message}
-        `;
-        suc.style.display = 'block';
-      } catch (e) {
-        errEl.textContent = e.message;
-        errEl.style.display = 'block';
-        btn.disabled = false;
-        btn.textContent = 'Submit Application';
-      }
-    }
-
-    loadJob();
-  </script>
+  <footer class="border-t border-border py-6 text-center text-xs text-slate-600">© 2025 JobBoard MVP</footer>
 </body>
 </html>

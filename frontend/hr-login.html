@@ -4,67 +4,99 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>HR Login – JobBoard</title>
-  <link rel="stylesheet" href="style.css"/>
-</head>
-<body class="auth-page">
-  <div class="auth-card">
-    <a href="index.html" class="logo centered">⚡ JobBoard</a>
-    <h1>HR Portal</h1>
-    <p class="subtitle">Sign in to review candidates</p>
-
-    <div id="login-error" class="alert alert-error" style="display:none"></div>
-
-    <div class="form-group">
-      <label>Username</label>
-      <input id="username" type="text" placeholder="hr1" autocomplete="username"/>
-    </div>
-    <div class="form-group">
-      <label>Password</label>
-      <input id="password" type="password" placeholder="••••••••" autocomplete="current-password"
-             onkeydown="if(event.key==='Enter') login()"/>
-    </div>
-
-    <button class="btn btn-primary full" onclick="login()">Sign In</button>
-
-    <p class="hint">MVP credentials: hr1/password1 · hr2/password2 · hr3/password3</p>
-  </div>
-
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
   <script>
-    const API = 'http://localhost:8000';
-
-    // Redirect if already logged in
-    if (localStorage.getItem('hr_token')) window.location.href = 'hr-dashboard.html';
-
-    async function login() {
-      const username = document.getElementById('username').value.trim();
-      const password = document.getElementById('password').value;
-      const errEl    = document.getElementById('login-error');
-      errEl.style.display = 'none';
-
-      if (!username || !password) {
-        errEl.textContent = 'Please enter your username and password.';
-        errEl.style.display = 'block';
-        return;
-      }
-
-      try {
-        const res  = await fetch(`${API}/api/hr/login`, {
-          method:  'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body:    JSON.stringify({ username, password }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.detail || 'Login failed');
-
-        localStorage.setItem('hr_token',    data.token);
-        localStorage.setItem('hr_company',  data.company);
-        localStorage.setItem('hr_username', data.username);
-        window.location.href = 'hr-dashboard.html';
-      } catch (e) {
-        errEl.textContent = e.message;
-        errEl.style.display = 'block';
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: { bg:'#080812', card:'#0f0f1f', border:'#1a1a2e', accent:'#818cf8', 'accent-d':'#6366f1' },
+          fontFamily: { display:['Syne','sans-serif'], body:['Plus Jakarta Sans','sans-serif'] },
+        }
       }
     }
   </script>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Plus+Jakarta+Sans:wght@400;500;600&display=swap" rel="stylesheet"/>
+  <style>
+    body { background:#080812; font-family:'Plus Jakarta Sans',sans-serif; }
+    input:focus { outline:none; }
+    @keyframes fadeUp { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
+    .fade-up { animation:fadeUp .5s ease forwards; }
+  </style>
+</head>
+<body class="text-slate-100 min-h-screen flex flex-col items-center justify-center px-4"
+      x-data="{
+        username: '',
+        password: '',
+        loading: false,
+        error: '',
+        init() {
+          if (localStorage.getItem('hr_token')) window.location.href = 'hr-dashboard.html';
+        },
+        async login() {
+          this.error = '';
+          if (!this.username || !this.password) { this.error = 'Please enter your credentials.'; return; }
+          this.loading = true;
+          try {
+            const res = await fetch('http://localhost:8000/api/hr/login', {
+              method:'POST',
+              headers:{'Content-Type':'application/json'},
+              body: JSON.stringify({ username: this.username, password: this.password })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.detail || 'Login failed');
+            localStorage.setItem('hr_token',    data.token);
+            localStorage.setItem('hr_company',  data.company);
+            localStorage.setItem('hr_username', data.username);
+            window.location.href = 'hr-dashboard.html';
+          } catch(e) {
+            this.error = e.message;
+          } finally {
+            this.loading = false;
+          }
+        }
+      }">
+
+  <!-- Background glow -->
+  <div class="fixed inset-0 pointer-events-none overflow-hidden">
+    <div class="absolute top-1/4 left-1/2 -translate-x-1/2 w-96 h-96 bg-accent/5 rounded-full blur-3xl"></div>
+  </div>
+
+  <a href="index.html" class="font-display text-2xl font-bold text-white mb-10 hover:text-accent transition-colors fade-up">⚡ JobBoard</a>
+
+  <div class="fade-up w-full max-w-sm bg-card border border-border rounded-2xl p-8 relative">
+    <h1 class="font-display text-2xl font-bold text-white mb-1">HR Portal</h1>
+    <p class="text-slate-500 text-sm mb-8">Sign in to review candidates</p>
+
+    <div x-show="error" class="bg-red-500/10 border border-red-500/30 text-red-400 rounded-xl px-4 py-3 text-sm mb-6" x-text="error"></div>
+
+    <div class="space-y-4 mb-6">
+      <div>
+        <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Username</label>
+        <input x-model="username" type="text" placeholder="hr1"
+               @keydown.enter="login()"
+               class="w-full bg-bg border border-border rounded-xl px-4 py-3 text-sm text-white placeholder-slate-600 focus:border-accent transition-colors"/>
+      </div>
+      <div>
+        <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Password</label>
+        <input x-model="password" type="password" placeholder="••••••••"
+               @keydown.enter="login()"
+               class="w-full bg-bg border border-border rounded-xl px-4 py-3 text-sm text-white placeholder-slate-600 focus:border-accent transition-colors"/>
+      </div>
+    </div>
+
+    <button @click="login()" :disabled="loading"
+            class="w-full bg-accent hover:bg-accent-d disabled:opacity-50 text-white font-semibold py-3 rounded-xl transition-all duration-200 text-sm">
+      <span x-show="!loading">Sign In →</span>
+      <span x-show="loading" class="flex items-center justify-center gap-2">
+        <svg class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+        Signing in…
+      </span>
+    </button>
+
+    <p class="text-center text-xs text-slate-600 mt-6">
+      MVP: hr1/password1 · hr2/password2 · hr3/password3
+    </p>
+  </div>
 </body>
 </html>

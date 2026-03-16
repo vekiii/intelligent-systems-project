@@ -1,0 +1,34 @@
+# Database — contains real user data, never commit this
+backend/ats.db
+
+# Uploaded CVs — personal data
+backend/uploads/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Virtual environments
+venv/
+env/
+.env/
+
+# Environment variables / secrets
+.env
+*.env
+
+# ML model — large binary file, regenerate with train.py
+models/cv_classifier.pkl
+
+# Kaggle dataset — too large for GitHub
+Resume.csv
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# VS Code
+.vscode/

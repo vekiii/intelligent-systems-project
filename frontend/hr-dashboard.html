@@ -4,179 +4,461 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Dashboard – HR Portal</title>
-  <link rel="stylesheet" href="style.css"/>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: { bg:'#080812', card:'#0f0f1f', border:'#1a1a2e', accent:'#818cf8', 'accent-d':'#6366f1' },
+          fontFamily: { display:['Syne','sans-serif'], body:['Plus Jakarta Sans','sans-serif'] },
+        }
+      }
+    }
+  </script>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Plus+Jakarta+Sans:wght@400;500;600&display=swap" rel="stylesheet"/>
+  <style>
+    body { background:#080812; font-family:'Plus Jakarta Sans',sans-serif; }
+    input:focus { outline:none; }
+    @keyframes fadeUp { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
+    .fade-up { animation:fadeUp .4s ease forwards; }
+    details summary { cursor:pointer; list-style:none; }
+    details summary::-webkit-details-marker { display:none; }
+    .score-ring { transform:rotate(-90deg); }
+    .score-ring circle { transition: stroke-dashoffset 1s ease; }
+  </style>
 </head>
-<body>
-  <header>
-    <div class="header-inner">
-      <span class="logo">⚡ JobBoard <span id="company-label" class="company-label"></span></span>
-      <button class="btn btn-outline" onclick="logout()">Sign Out</button>
+<body class="text-slate-100 min-h-screen flex flex-col"
+  x-data="{
+    token: localStorage.getItem('hr_token'),
+    company: localStorage.getItem('hr_company'),
+    job: null,
+    qualified: [],
+    allApps: [],
+    loading: true,
+    error: '',
+    showRejected: false,
+
+    get rejected() { return this.allApps.filter(a => a.final_score < 6); },
+
+    scoreColor(s) {
+      if (s >= 8) return '#fbbf24';
+      if (s >= 6) return '#4ade80';
+      return '#f87171';
+    },
+    scoreBg(s) {
+      if (s >= 8) return 'rgba(251,191,36,.1)';
+      if (s >= 6) return 'rgba(74,222,128,.1)';
+      return 'rgba(248,113,113,.1)';
+    },
+    scoreLabel(s) {
+      if (s >= 8) return '🌟 Excellent';
+      if (s >= 6) return '✅ Good';
+      return '❌ Below threshold';
+    },
+    barColor(s) {
+      if (s >= 7) return '#818cf8';
+      if (s >= 4) return '#fbbf24';
+      return '#f87171';
+    },
+    qualityColor(l) {
+      if (l==='HIGH') return '#4ade80';
+      if (l==='MEDIUM') return '#fbbf24';
+      return '#f87171';
+    },
+
+    statusConfig: {
+      new:      { label:'New',      icon:'🔵', tw:'bg-blue-500/10 text-blue-400 border-blue-500/20' },
+      read:     { label:'Read',     icon:'👁️',  tw:'bg-slate-500/10 text-slate-400 border-slate-500/20' },
+      starred:  { label:'Starred',  icon:'⭐',  tw:'bg-amber-500/10 text-amber-400 border-amber-500/20' },
+      rejected: { label:'Rejected', icon:'❌',  tw:'bg-red-500/10 text-red-400 border-red-500/20' },
+    },
+
+    async setStatus(appId, newStatus) {
+      try {
+        await fetch('http://localhost:8000/api/hr/applications/' + appId + '/status', {
+          method:'PATCH',
+          headers:{ 'Authorization':'Bearer ' + this.token, 'Content-Type':'application/json' },
+          body: JSON.stringify({ status: newStatus }),
+        });
+        // Update in both arrays
+        [this.qualified, this.allApps].forEach(arr => {
+          const a = arr.find(x => x.id === appId);
+          if (a) a.status = newStatus;
+        });
+      } catch(e) { console.error(e); }
+    },
+
+    parse(a) {
+      const tryParse = v => {
+        if (!v) return {};
+        if (typeof v === 'object') return v;  // already parsed by backend
+        try { return JSON.parse(v); } catch { return {}; }
+      };
+      a.quality_breakdown  = tryParse(a.quality_breakdown);
+      a.ml_confidence      = tryParse(a.ml_confidence);
+      a.job_fit_breakdown  = tryParse(a.job_fit_breakdown);
+      return a;
+    },
+
+    formatDate(iso) {
+      return new Date(iso).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
+    },
+
+    logout() { localStorage.clear(); window.location.href = 'hr-login.html'; },
+
+    async init() {
+      if (!this.token) { window.location.href = 'hr-login.html'; return; }
+      try {
+        const [r1, r2] = await Promise.all([
+          fetch('http://localhost:8000/api/hr/applications',     { headers:{ Authorization:'Bearer '+this.token } }),
+          fetch('http://localhost:8000/api/hr/all-applications', { headers:{ Authorization:'Bearer '+this.token } }),
+        ]);
+        if (r1.status === 401) { localStorage.clear(); window.location.href = 'hr-login.html'; return; }
+        const d1 = await r1.json();
+        const d2 = await r2.json();
+        this.job       = d1.job;
+        this.qualified = (d1.applications || []).map(a => this.parse(a));
+        this.allApps   = (d2 || []).map(a => this.parse(a));
+      } catch(e) {
+        this.error = 'Failed to load applications. Is the backend running?';
+      } finally {
+        this.loading = false;
+      }
+    }
+  }">
+
+  <!-- Header -->
+  <header class="border-b border-border/60 backdrop-blur-sm sticky top-0 z-50" style="background:rgba(8,8,18,.9)">
+    <div class="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <span class="font-display text-xl font-bold text-white">⚡ JobBoard</span>
+        <span x-show="company" class="text-xs font-semibold text-slate-500 border border-border px-2.5 py-1 rounded-lg" x-text="company"></span>
+      </div>
+      <button @click="logout()" class="text-sm font-semibold text-slate-400 hover:text-white transition-colors px-4 py-2 rounded-lg border border-border hover:border-slate-500">
+        Sign Out
+      </button>
     </div>
   </header>
 
-  <main class="container">
-    <div class="dashboard-title">
-      <div>
-        <h1 id="dash-title">Qualified Candidates</h1>
-        <p id="dash-subtitle" class="subtitle">Loading…</p>
-      </div>
-      <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
-        <div class="score-legend">
-          <span class="score-dot excellent"></span> 8–10 Excellent
-          <span class="score-dot good"></span> 6–7 Good
-        </div>
-        <label class="toggle-label">
-          <input type="checkbox" id="show-rejected" onchange="toggleRejected()"/>
-          Show rejected
-        </label>
-      </div>
+  <main class="flex-1 max-w-6xl mx-auto px-6 py-10 w-full">
+
+    <!-- Error -->
+    <div x-show="error" class="bg-red-500/10 border border-red-500/30 text-red-400 rounded-xl px-5 py-4 text-sm mb-8" x-text="error"></div>
+
+    <!-- Loading -->
+    <div x-show="loading" class="space-y-4">
+      <div class="bg-card border border-border rounded-2xl h-24 animate-pulse"></div>
+      <div class="bg-card border border-border rounded-2xl h-40 animate-pulse"></div>
+      <div class="bg-card border border-border rounded-2xl h-40 animate-pulse"></div>
     </div>
 
-    <div id="alert-box" class="alert alert-error" style="display:none"></div>
-    <div id="candidates-list"><div class="skeleton tall"></div></div>
-
-    <div id="rejected-section" style="display:none">
-      <div class="section-divider">
-        <span>❌ Below threshold (score &lt; 6) — <span id="rejected-count">0</span> candidate(s)</span>
+    <div x-show="!loading">
+      <!-- Page header -->
+      <div class="flex flex-wrap items-start justify-between gap-4 mb-8">
+        <div>
+          <h1 class="font-display text-3xl font-bold text-white" x-text="job?.title || 'Dashboard'"></h1>
+          <p class="text-slate-500 text-sm mt-1">
+            <span class="text-emerald-400 font-semibold" x-text="qualified.length"></span> qualified ·
+            <span class="text-red-400 font-semibold" x-text="rejected.length"></span> rejected ·
+            <span class="text-slate-400 font-semibold" x-text="allApps.length"></span> total
+          </p>
+        </div>
+        <div class="flex items-center gap-3">
+          <div class="flex items-center gap-2 text-sm">
+            <span class="w-2 h-2 rounded-full bg-amber-400"></span><span class="text-slate-400">8–10</span>
+            <span class="w-2 h-2 rounded-full bg-emerald-400 ml-2"></span><span class="text-slate-400">6–7</span>
+          </div>
+          <label class="flex items-center gap-2 text-sm text-slate-400 cursor-pointer border border-border rounded-lg px-3 py-2 hover:border-slate-500 transition-colors">
+            <input type="checkbox" x-model="showRejected" class="accent-violet-500"/>
+            Show rejected
+          </label>
+        </div>
       </div>
-      <div id="rejected-list"></div>
+
+      <!-- Qualified candidates -->
+      <div class="space-y-4">
+        <template x-if="qualified.length === 0">
+          <div class="bg-card border border-border rounded-2xl py-16 text-center">
+            <svg class="w-12 h-12 mx-auto text-slate-600 mb-4" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <p class="text-slate-400 font-semibold">No qualified candidates yet</p>
+            <p class="text-slate-600 text-sm mt-1">Toggle "Show rejected" to see all submissions</p>
+          </div>
+        </template>
+
+        <template x-for="(a, i) in qualified" :key="a.id">
+          <div class="fade-up bg-card border border-border rounded-2xl p-6 flex gap-5"
+               :style="`animation-delay:${i*0.07}s`"
+               :class="{ 'border-red-500/20 opacity-60': a.status === 'rejected' }">
+
+            <!-- Rank -->
+            <div class="text-slate-600 font-bold text-sm pt-1 min-w-[28px]" x-text="'#'+(i+1)"></div>
+
+            <!-- Info -->
+            <div class="flex-1 min-w-0">
+              <!-- Name + status -->
+              <div class="flex flex-wrap items-center gap-2 mb-1">
+                <span class="font-display font-bold text-white text-lg" x-text="a.name + ' ' + a.surname"></span>
+                <span class="text-xs font-bold px-2.5 py-1 rounded-full border"
+                      :class="statusConfig[a.status || 'new']?.tw"
+                      x-text="(statusConfig[a.status || 'new']?.icon || '') + ' ' + (statusConfig[a.status || 'new']?.label || 'New')"></span>
+              </div>
+
+              <!-- Contact -->
+              <div class="flex flex-wrap gap-3 text-sm text-slate-500 mb-4">
+                <a :href="'mailto:'+a.email" class="hover:text-accent transition-colors" x-text="a.email"></a>
+                <span>·</span><span x-text="a.phone"></span>
+                <span>·</span><span x-text="(a.word_count || 0) + ' words'"></span>
+              </div>
+
+              <!-- Job fit summary -->
+              <div class="bg-bg border border-border rounded-xl px-4 py-3 text-sm text-slate-300 leading-relaxed mb-4">
+                <span class="text-accent font-semibold">Job fit: </span>
+                <span x-text="a.job_fit_summary || 'No summary available'"></span>
+              </div>
+
+              <!-- Job fit per-skill breakdown — always visible -->
+              <details class="bg-bg border border-border rounded-xl mb-3 overflow-hidden" open>
+                <summary class="px-4 py-3 text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center justify-between hover:text-white transition-colors">
+                  Job Fit — per skill
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+                </summary>
+                <div class="px-4 pb-4">
+                  <template x-if="Object.keys(a.job_fit_breakdown || {}).length > 0">
+                    <div class="space-y-2.5">
+                      <template x-for="[skill, score] in Object.entries(a.job_fit_breakdown)" :key="skill">
+                        <div class="flex items-center gap-3">
+                          <span class="text-xs text-slate-500 w-28 truncate" x-text="skill"></span>
+                          <div class="flex-1 bg-border rounded-full h-1.5 overflow-hidden">
+                            <div class="h-full rounded-full transition-all duration-700"
+                                 :style="`width:${score*10}%;background:${barColor(score)}`"></div>
+                          </div>
+                          <span class="text-xs font-bold text-slate-300 w-8 text-right" x-text="parseFloat(score).toFixed(1)"></span>
+                        </div>
+                      </template>
+                    </div>
+                  </template>
+                  <template x-if="Object.keys(a.job_fit_breakdown || {}).length === 0">
+                    <p class="text-xs text-slate-600 italic">No per-skill data — resubmit a CV to see breakdown</p>
+                  </template>
+                </div>
+              </details>
+
+              <!-- CV quality breakdown — always visible -->
+              <details class="bg-bg border border-border rounded-xl mb-3 overflow-hidden">
+                <summary class="px-4 py-3 text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center justify-between hover:text-white transition-colors">
+                  <span>CV Quality:
+                    <span class="ml-1 font-bold" :style="`color:${qualityColor(a.quality_label)}`" x-text="a.quality_label || '—'"></span>
+                    <span class="font-normal text-slate-500" x-text="a.quality_score ? ' (' + Math.round(a.quality_score * 10) + '/100 pts)' : ''"></span>
+                  </span>
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+                </summary>
+                <div class="px-4 pb-4">
+                  <template x-if="Object.keys(a.quality_breakdown || {}).length > 0">
+                    <div class="space-y-2.5">
+                      <template x-for="[key, val] in Object.entries(a.quality_breakdown)" :key="key">
+                        <div class="flex items-center gap-3">
+                          <span class="text-xs text-slate-500 w-20 capitalize" x-text="key"></span>
+                          <div class="flex-1 bg-border rounded-full h-1.5 overflow-hidden">
+                            <div class="h-full bg-accent rounded-full" :style="`width:${(val.score/val.max)*100}%`"></div>
+                          </div>
+                          <span class="text-xs font-bold text-slate-300 w-10 text-right" x-text="val.score + '/' + val.max"></span>
+                        </div>
+                      </template>
+                    </div>
+                  </template>
+                  <template x-if="Object.keys(a.quality_breakdown || {}).length === 0">
+                    <p class="text-xs text-slate-600 italic">No quality data — resubmit a CV to see breakdown</p>
+                  </template>
+                </div>
+              </details>
+
+              <!-- Status actions -->
+              <div class="flex items-center gap-2 mt-4">
+                <span class="text-xs text-slate-600 font-semibold uppercase tracking-wider mr-1">Status:</span>
+                <template x-for="[key, cfg] in Object.entries(statusConfig)" :key="key">
+                  <button @click="setStatus(a.id, key)"
+                          class="w-9 h-9 rounded-xl border text-base flex items-center justify-center transition-all duration-150 hover:scale-110"
+                          :class="a.status === key ? 'border-accent bg-accent/10' : 'border-border bg-bg hover:border-slate-500'"
+                          :title="cfg.label"
+                          x-text="cfg.icon"></button>
+                </template>
+              </div>
+
+              <div class="text-xs text-slate-600 mt-3" x-text="'Applied ' + formatDate(a.created_at)"></div>
+            </div>
+
+            <!-- Score block -->
+            <div class="text-center min-w-[90px] flex flex-col items-center gap-2">
+              <!-- Score circle SVG -->
+              <div class="relative w-20 h-20">
+                <svg class="w-20 h-20 score-ring" viewBox="0 0 80 80">
+                  <circle cx="40" cy="40" r="32" fill="none" stroke="#1a1a2e" stroke-width="6"/>
+                  <circle cx="40" cy="40" r="32" fill="none" stroke-width="6"
+                          :stroke="scoreColor(a.final_score)"
+                          stroke-linecap="round"
+                          :stroke-dasharray="`${(a.final_score/10)*201} 201`"
+                          stroke-dashoffset="0"/>
+                </svg>
+                <div class="absolute inset-0 flex flex-col items-center justify-center">
+                  <span class="font-display font-bold text-white text-lg leading-none" x-text="a.final_score.toFixed(1)"></span>
+                  <span class="text-xs text-slate-600">/10</span>
+                </div>
+              </div>
+              <div class="text-xs font-semibold" :style="`color:${scoreColor(a.final_score)}`" x-text="scoreLabel(a.final_score)"></div>
+              <!-- Sub scores -->
+              <div class="flex gap-1.5 mt-1">
+                <div class="bg-bg border border-border rounded-lg px-2 py-1.5 text-center">
+                  <div class="text-xs text-slate-600 uppercase tracking-wider" style="font-size:9px">Fit</div>
+                  <div class="font-bold text-white text-sm" x-text="(a.job_fit_score || 0).toFixed(1)"></div>
+                </div>
+                <div class="bg-bg border border-border rounded-lg px-2 py-1.5 text-center">
+                  <div class="text-xs text-slate-600 uppercase tracking-wider" style="font-size:9px">CV</div>
+                  <div class="font-bold text-white text-sm" x-text="(a.quality_score || 0).toFixed(1)"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </template>
+      </div>
+
+      <!-- Rejected section -->
+      <template x-if="showRejected && rejected.length > 0">
+        <div class="mt-10">
+          <div class="flex items-center gap-4 mb-4">
+            <div class="flex-1 h-px bg-border"></div>
+            <span class="text-xs font-bold uppercase tracking-widest text-slate-500">
+              ❌ Below threshold — <span x-text="rejected.length"></span> candidate(s)
+            </span>
+            <div class="flex-1 h-px bg-border"></div>
+          </div>
+
+          <div class="space-y-4">
+            <template x-for="(a, i) in rejected" :key="a.id">
+              <div class="bg-card border border-red-500/10 rounded-2xl p-6 flex gap-5 opacity-70 hover:opacity-100 transition-opacity">
+                <div class="text-slate-600 font-bold text-sm pt-1 min-w-[28px]" x-text="'#R'+(i+1)"></div>
+                <div class="flex-1 min-w-0">
+                  <div class="flex flex-wrap items-center gap-2 mb-1">
+                    <span class="font-display font-bold text-white text-lg" x-text="a.name + ' ' + a.surname"></span>
+                    <span class="text-xs font-bold px-2.5 py-1 rounded-full border"
+                          :class="statusConfig[a.status || 'new']?.tw"
+                          x-text="(statusConfig[a.status || 'new']?.icon || '') + ' ' + (statusConfig[a.status || 'new']?.label || 'New')"></span>
+                  </div>
+                  <div class="flex flex-wrap gap-3 text-sm text-slate-500 mb-3">
+                    <a :href="'mailto:'+a.email" class="hover:text-accent" x-text="a.email"></a>
+                    <span>·</span><span x-text="a.phone"></span>
+                    <span>·</span><span x-text="(a.word_count || 0) + ' words'"></span>
+                  </div>
+
+                  <!-- Job fit summary -->
+                  <div class="bg-bg border border-border rounded-xl px-4 py-3 text-sm text-slate-400 mb-3">
+                    <span class="text-red-400 font-semibold">Job fit: </span>
+                    <span x-text="a.job_fit_summary || 'No summary'"></span>
+                  </div>
+
+                  <!-- Job fit per-skill breakdown -->
+                  <details class="bg-bg border border-border rounded-xl mb-3 overflow-hidden" open>
+                    <summary class="px-4 py-3 text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center justify-between hover:text-white transition-colors">
+                      Job Fit — per skill
+                      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+                    </summary>
+                    <div class="px-4 pb-4">
+                      <template x-if="Object.keys(a.job_fit_breakdown || {}).length > 0">
+                        <div class="space-y-2.5">
+                          <template x-for="[skill, score] in Object.entries(a.job_fit_breakdown)" :key="skill">
+                            <div class="flex items-center gap-3">
+                              <span class="text-xs text-slate-500 w-28 truncate" x-text="skill"></span>
+                              <div class="flex-1 bg-border rounded-full h-1.5 overflow-hidden">
+                                <div class="h-full rounded-full" :style="`width:${score*10}%;background:${barColor(score)}`"></div>
+                              </div>
+                              <span class="text-xs font-bold text-slate-300 w-8 text-right" x-text="parseFloat(score).toFixed(1)"></span>
+                            </div>
+                          </template>
+                        </div>
+                      </template>
+                      <template x-if="Object.keys(a.job_fit_breakdown || {}).length === 0">
+                        <p class="text-xs text-slate-600 italic">No per-skill data — resubmit to see breakdown</p>
+                      </template>
+                    </div>
+                  </details>
+
+                  <!-- CV quality breakdown -->
+                  <details class="bg-bg border border-border rounded-xl mb-3 overflow-hidden">
+                    <summary class="px-4 py-3 text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center justify-between hover:text-white transition-colors">
+                      <span>CV Quality:
+                        <span class="ml-1 font-bold" :style="`color:${qualityColor(a.quality_label)}`" x-text="a.quality_label || '—'"></span>
+                        <span class="font-normal text-slate-500" x-text="a.quality_score ? ' (' + Math.round(a.quality_score * 10) + '/100 pts)' : ''"></span>
+                      </span>
+                      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+                    </summary>
+                    <div class="px-4 pb-4">
+                      <template x-if="Object.keys(a.quality_breakdown || {}).length > 0">
+                        <div class="space-y-2.5">
+                          <template x-for="[key, val] in Object.entries(a.quality_breakdown)" :key="key">
+                            <div class="flex items-center gap-3">
+                              <span class="text-xs text-slate-500 w-20 capitalize" x-text="key"></span>
+                              <div class="flex-1 bg-border rounded-full h-1.5 overflow-hidden">
+                                <div class="h-full bg-accent rounded-full" :style="`width:${(val.score/val.max)*100}%`"></div>
+                              </div>
+                              <span class="text-xs font-bold text-slate-300 w-10 text-right" x-text="val.score + '/' + val.max"></span>
+                            </div>
+                          </template>
+                        </div>
+                      </template>
+                      <template x-if="Object.keys(a.quality_breakdown || {}).length === 0">
+                        <p class="text-xs text-slate-600 italic">No quality data — resubmit to see breakdown</p>
+                      </template>
+                    </div>
+                  </details>
+
+                  <!-- Status actions -->
+                  <div class="flex items-center gap-2 mt-3">
+                    <span class="text-xs text-slate-600 font-semibold uppercase tracking-wider mr-1">Status:</span>
+                    <template x-for="[key, cfg] in Object.entries(statusConfig)" :key="key">
+                      <button @click="setStatus(a.id, key)"
+                              class="w-9 h-9 rounded-xl border text-base flex items-center justify-center transition-all hover:scale-110"
+                              :class="a.status === key ? 'border-accent bg-accent/10' : 'border-border bg-bg hover:border-slate-500'"
+                              :title="cfg.label"
+                              x-text="cfg.icon"></button>
+                    </template>
+                  </div>
+                  <div class="text-xs text-slate-600 mt-2" x-text="'Applied ' + formatDate(a.created_at)"></div>
+                </div>
+
+                <!-- Score block -->
+                <div class="text-center min-w-[90px] flex flex-col items-center gap-2">
+                  <div class="relative w-20 h-20">
+                    <svg class="w-20 h-20 score-ring" viewBox="0 0 80 80">
+                      <circle cx="40" cy="40" r="32" fill="none" stroke="#1a1a2e" stroke-width="6"/>
+                      <circle cx="40" cy="40" r="32" fill="none" stroke="#f87171" stroke-width="6"
+                              stroke-linecap="round"
+                              :stroke-dasharray="`${(a.final_score/10)*201} 201`"/>
+                    </svg>
+                    <div class="absolute inset-0 flex flex-col items-center justify-center">
+                      <span class="font-display font-bold text-white text-lg leading-none" x-text="a.final_score.toFixed(1)"></span>
+                      <span class="text-xs text-slate-600">/10</span>
+                    </div>
+                  </div>
+                  <div class="text-xs font-semibold text-red-400">Below threshold</div>
+                  <div class="flex gap-1.5">
+                    <div class="bg-bg border border-border rounded-lg px-2 py-1.5 text-center">
+                      <div class="text-xs text-slate-600 uppercase tracking-wider" style="font-size:9px">Fit</div>
+                      <div class="font-bold text-white text-sm" x-text="(a.job_fit_score || 0).toFixed(1)"></div>
+                    </div>
+                    <div class="bg-bg border border-border rounded-lg px-2 py-1.5 text-center">
+                      <div class="text-xs text-slate-600 uppercase tracking-wider" style="font-size:9px">CV</div>
+                      <div class="font-bold text-white text-sm" x-text="(a.quality_score || 0).toFixed(1)"></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </template>
+          </div>
+        </div>
+      </template>
     </div>
   </main>
 
-  <footer><p>© 2025 JobBoard MVP</p></footer>
-
-  <script>
-    const API = 'http://localhost:8000';
-    const token = localStorage.getItem('hr_token');
-    const company = localStorage.getItem('hr_company');
-    if (!token) window.location.href = 'hr-login.html';
-    document.getElementById('company-label').textContent = company || '';
-    function logout() { localStorage.clear(); window.location.href = 'hr-login.html'; }
-    const scoreClass = s => s >= 8 ? 'excellent' : s >= 6 ? 'good' : 'low';
-    const scoreLabel = s => s >= 8 ? '🌟 Excellent' : s >= 6 ? '✅ Good' : '❌ Below threshold';
-    const qualityColor = l => l === 'HIGH' ? '#22c55e' : l === 'MEDIUM' ? '#f59e0b' : '#ef4444';
-    function formatDate(iso) {
-      return new Date(iso).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
-    }
-    function breakdownBar(label, score, max) {
-      const pct = Math.round((score / max) * 100);
-      return `<div class="breakdown-row"><span class="breakdown-label">${label}</span><div class="breakdown-bar-wrap"><div class="breakdown-bar" style="width:${pct}%"></div></div><span class="breakdown-val">${score}/${max}</span></div>`;
-    }
-    function jobFitBar(skill, score) {
-      const pct = Math.round((score / 10) * 100);
-      const color = score >= 7 ? '#6366f1' : score >= 4 ? '#f59e0b' : '#ef4444';
-      return `<div class="breakdown-row"><span class="breakdown-label">${skill}</span><div class="breakdown-bar-wrap"><div class="breakdown-bar" style="width:${pct}%;background:${color}"></div></div><span class="breakdown-val">${score.toFixed(1)}/10</span></div>`;
-    }
-    const STATUS_CONFIG = {
-      new:      { label:'New',      icon:'🔵', cls:'status-new'      },
-      read:     { label:'Read',     icon:'👁️',  cls:'status-read'     },
-      starred:  { label:'Starred',  icon:'⭐',  cls:'status-starred'  },
-      rejected: { label:'Rejected', icon:'❌',  cls:'status-rejected' },
-    };
-    async function setStatus(appId, newStatus) {
-      try {
-        await fetch(`${API}/api/hr/applications/${appId}/status`, {
-          method: 'PATCH',
-          headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ status: newStatus }),
-        });
-        const card = document.querySelector(`[data-app-id="${appId}"]`);
-        if (card) {
-          const cfg = STATUS_CONFIG[newStatus] || STATUS_CONFIG.new;
-          card.querySelector('.status-badge').textContent = `${cfg.icon} ${cfg.label}`;
-          card.querySelector('.status-badge').className = `status-badge ${cfg.cls}`;
-          card.querySelectorAll('.status-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.status === newStatus));
-        }
-      } catch(e) { console.error('Status update failed', e); }
-    }
-    function statusButtons(appId, cur) {
-      return Object.entries(STATUS_CONFIG).map(([key, cfg]) =>
-        `<button class="status-btn ${cur===key?'active':''}" data-status="${key}" onclick="setStatus(${appId},'${key}')" title="${cfg.label}">${cfg.icon}</button>`
-      ).join('');
-    }
-    function renderCard(a, rank) {
-      const bd = a.quality_breakdown || {};
-      const jfbd = a.job_fit_breakdown || {};
-      const hasBD = Object.keys(bd).length > 0;
-      const hasJF = Object.keys(jfbd).length > 0;
-      const hasMl = a.ml_available && a.ml_score !== null;
-      const sc = scoreClass(a.final_score);
-      const status = a.status || 'new';
-      const sCfg = STATUS_CONFIG[status] || STATUS_CONFIG.new;
-      return `
-      <div class="candidate-card ${sc==='low'?'card-rejected':''}" data-app-id="${a.id}">
-        <div class="candidate-rank">${rank}</div>
-        <div class="candidate-info">
-          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-            <div class="candidate-name">${a.name} ${a.surname}</div>
-            <span class="status-badge ${sCfg.cls}">${sCfg.icon} ${sCfg.label}</span>
-          </div>
-          <div class="candidate-contact">
-            <a href="mailto:${a.email}">${a.email}</a> <span>·</span> <span>${a.phone}</span> <span>·</span> <span>${a.word_count??'?'} words</span>
-          </div>
-          <div class="candidate-summary"><strong>🤖 Job fit:</strong> ${a.job_fit_summary||'<em style="color:#94a3b8">No summary</em>'}</div>
-          ${hasJF?`<details class="quality-details" open><summary><strong>Job Fit breakdown</strong> — per required skill</summary><div class="breakdown-grid">${Object.entries(jfbd).map(([s,v])=>jobFitBar(s,v)).join('')}</div></details>`:''}
-          ${hasBD?`<details class="quality-details"><summary>CV Quality: <span style="color:${qualityColor(a.quality_label)};font-weight:700">${a.quality_label}</span> &nbsp;(${(a.quality_score*10).toFixed(0)}/100 pts)</summary><div class="breakdown-grid">${breakdownBar('Length',bd.length?.score??0,bd.length?.max??20)}${breakdownBar('Contact',bd.contact?.score??0,bd.contact?.max??15)}${breakdownBar('Education',bd.education?.score??0,bd.education?.max??15)}${breakdownBar('Experience',bd.experience?.score??0,bd.experience?.max??20)}${breakdownBar('Skills',bd.skills?.score??0,bd.skills?.max??15)}${breakdownBar('Structure',bd.structure?.score??0,bd.structure?.max??15)}</div></details>`:''}
-          <div class="status-actions"><span style="font-size:.75rem;color:var(--muted);font-weight:600">Set status:</span> ${statusButtons(a.id, status)}</div>
-          <div class="candidate-meta">Applied ${formatDate(a.created_at)}</div>
-        </div>
-        <div class="candidate-score-block">
-          <div class="score-circle ${sc}"><span class="score-value">${a.final_score.toFixed(1)}</span><span class="score-max">/10</span></div>
-          <div class="score-label ${sc}">${scoreLabel(a.final_score)}</div>
-          <div class="sub-scores">
-            <div class="sub-score"><span class="sub-score-label">Job fit</span><span class="sub-score-val">${a.job_fit_score?.toFixed(1)??'?'}</span></div>
-            <div class="sub-score"><span class="sub-score-label">Quality</span><span class="sub-score-val">${a.quality_score?.toFixed(1)??'?'}</span></div>
-            ${hasMl?`<div class="sub-score"><span class="sub-score-label">ML</span><span class="sub-score-val">${a.ml_score.toFixed(1)}</span></div>`:''}
-          </div>
-        </div>
-      </div>`;
-    }
-    let allApps = [], qualifiedApps = [];
-    function toggleRejected() {
-      const show = document.getElementById('show-rejected').checked;
-      const rejected = allApps.filter(a => a.final_score < 6);
-      const sec = document.getElementById('rejected-section');
-      if (show && rejected.length > 0) {
-        document.getElementById('rejected-count').textContent = rejected.length;
-        document.getElementById('rejected-list').innerHTML = rejected.map((a,i)=>renderCard(a,`#R${i+1}`)).join('');
-        sec.style.display = 'block';
-      } else { sec.style.display = 'none'; }
-    }
-    async function loadApplications() {
-      try {
-        const [res, resAll] = await Promise.all([
-          fetch(`${API}/api/hr/applications`,     { headers:{ Authorization:`Bearer ${token}` } }),
-          fetch(`${API}/api/hr/all-applications`, { headers:{ Authorization:`Bearer ${token}` } }),
-        ]);
-        if (res.status === 401) { localStorage.clear(); window.location.href = 'hr-login.html'; return; }
-        const data = await res.json();
-        const dataAll = await resAll.json();
-        qualifiedApps = data.applications || [];
-        allApps = (dataAll||[]).map(a => {
-          try { a.quality_breakdown = JSON.parse(a.quality_breakdown||'{}'); } catch { a.quality_breakdown={}; }
-          try { a.ml_confidence     = JSON.parse(a.ml_confidence||'{}');     } catch { a.ml_confidence={}; }
-          try { a.job_fit_breakdown = JSON.parse(a.job_fit_breakdown||'{}'); } catch { a.job_fit_breakdown={}; }
-          return a;
-        });
-        const totalRejected = allApps.filter(a => a.final_score < 6).length;
-        if (data.job) {
-          document.getElementById('dash-title').textContent = data.job.title;
-          document.getElementById('dash-subtitle').textContent = `${qualifiedApps.length} qualified · ${totalRejected} rejected · ${allApps.length} total`;
-        }
-        const list = document.getElementById('candidates-list');
-        if (!qualifiedApps || qualifiedApps.length === 0) {
-          list.innerHTML = `<div class="empty-state"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><p>No qualified candidates yet.</p><p class="hint">Toggle "Show rejected" to see all submissions.</p></div>`;
-        } else {
-          list.innerHTML = qualifiedApps.map((a,i) => renderCard(a, `#${i+1}`)).join('');
-        }
-      } catch(e) {
-        const box = document.getElementById('alert-box');
-        box.textContent = `Failed to load: ${e.message}. Is the backend running?`;
-        box.style.display = 'block';
-        document.getElementById('candidates-list').innerHTML = '';
-      }
-    }
-    loadApplications();
-  </script>
+  <footer class="border-t border-border py-6 text-center text-xs text-slate-600">© 2025 JobBoard MVP</footer>
 </body>
 </html>
