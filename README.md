@@ -1,6 +1,6 @@
 # ⚡ JobBoard ATS — AI-Powered Applicant Tracking System
 
-An MVP Applicant Tracking System that uses a multi-component AI pipeline to automatically screen and score CVs. Built as a Master's thesis project in Intelligent Systems.
+An MVP Applicant Tracking System that uses a multi-component AI pipeline to automatically screen and score CVs. Built as a Master's student project for the course "Intelligent Systems".
 
 ---
 
